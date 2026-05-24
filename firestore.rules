@@ -1,0 +1,87 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Room
+    function isValidRoom(data) {
+      // notes is optional or must be string, createdAt is number
+      return data.keys().hasAll(['createdAt']) &&
+             data.createdAt is number &&
+             (data.keys().hasAll(['notes']) ? (data.notes is string && data.notes.size() <= 50000) : true);
+    }
+
+    match /rooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId);
+      allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming()) && incoming().createdAt == request.time.toMillis();
+      allow update: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming()) &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['notes']);
+      
+      // Participants
+      match /participants/{participantId} {
+        function isValidParticipant(data) {
+          return data.keys().hasAll(['joinedAt']) &&
+                 data.keys().size() == 1 &&
+                 data.joinedAt is number;
+        }
+
+        allow list: if isSignedIn() && isValidId(roomId); // anyone in system can list participants of a room
+        allow get: if isSignedIn() && isValidId(roomId) && isValidId(participantId);
+        allow create: if isSignedIn() &&
+                      isValidId(roomId) &&
+                      isValidId(participantId) &&
+                      participantId == request.auth.uid &&
+                      isValidParticipant(incoming()) &&
+                      incoming().joinedAt == request.time.toMillis();
+        allow delete: if isSignedIn() &&
+                      isValidId(roomId) &&
+                      isValidId(participantId) &&
+                      participantId == request.auth.uid;
+      }
+
+      // Signals
+      match /signals/{signalId} {
+        function isValidSignal(data) {
+          return data.keys().hasAll(['senderId', 'targetId', 'type', 'data', 'createdAt']) &&
+                 data.keys().size() == 5 &&
+                 data.senderId is string && data.senderId.size() <= 128 &&
+                 data.targetId is string && data.targetId.size() <= 128 &&
+                 data.type is string && data.type.size() <= 50 &&
+                 data.data is string && data.data.size() <= 10000 &&
+                 data.createdAt is number;
+        }
+
+        // Users can list/read signals targeted to them or sent by them
+        allow list: if isSignedIn() && isValidId(roomId) && 
+                    (resource.data.targetId == request.auth.uid || resource.data.senderId == request.auth.uid);
+        allow create: if isSignedIn() &&
+                      isValidId(roomId) &&
+                      isValidSignal(incoming()) &&
+                      incoming().senderId == request.auth.uid &&
+                      incoming().createdAt == request.time.toMillis();
+        allow delete: if isSignedIn() &&
+                      isValidId(roomId) &&
+                      existing().targetId == request.auth.uid; // Consumer deletes the signal once processed
+      }
+    }
+  }
+}

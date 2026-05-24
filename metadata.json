@@ -1,0 +1,6 @@
+{
+  "name": "MeetLite",
+  "description": "A completely free, lightweight mesh-network video conferencing app ideal for small bandwidths. Features peer-to-peer webRTC video, screen share, notes and local recording.",
+  "requestFramePermissions": ["camera", "microphone", "display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

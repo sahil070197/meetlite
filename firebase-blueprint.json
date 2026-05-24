@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "A video conferencing room containing meeting state like notes.",
+      "type": "object",
+      "properties": {
+        "notes": {
+          "type": "string",
+          "description": "Collaboratively edited notes for the room"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp when room was created"
+        }
+      }
+    },
+    "Participant": {
+      "title": "Participant",
+      "description": "A user in the room",
+      "type": "object",
+      "properties": {
+        "joinedAt": {
+          "type": "number",
+          "description": "Timestamp of join"
+        }
+      }
+    },
+    "Signal": {
+      "title": "Signal",
+      "description": "WebRTC signaling messages (SDP offers/answers, ICE candidates)",
+      "type": "object",
+      "properties": {
+        "senderId": {
+          "type": "string"
+        },
+        "targetId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "data": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "number"
+        }
+      },
+      "required": ["senderId", "targetId", "type", "data", "createdAt"]
+    }
+  },
+  "firestore": {
+    "rooms/{roomId}": {
+      "schema": {
+        "$ref": "#/entities/Room"
+      },
+      "description": "The main room document"
+    },
+    "rooms/{roomId}/participants/{participantId}": {
+      "schema": {
+        "$ref": "#/entities/Participant"
+      },
+      "description": "Participants currently in the room"
+    },
+    "rooms/{roomId}/signals/{signalId}": {
+      "schema": {
+        "$ref": "#/entities/Signal"
+      },
+      "description": "WebRTC signals exchanged between participants"
+    }
+  }
+}
