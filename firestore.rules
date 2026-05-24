@@ -40,8 +40,9 @@ service cloud.firestore {
       match /participants/{participantId} {
         function isValidParticipant(data) {
           return data.keys().hasAll(['joinedAt']) &&
-                 data.keys().size() == 1 &&
-                 data.joinedAt is number;
+                 data.keys().size() <= 2 &&
+                 data.joinedAt is number &&
+                 (data.keys().hasAll(['name']) ? (data.name is string && data.name.size() <= 100) : true);
         }
 
         allow list: if isSignedIn() && isValidId(roomId); // anyone in system can list participants of a room

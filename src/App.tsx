@@ -11,6 +11,7 @@ function App() {
   const [roomId, setRoomId] = useState<string>('');
   const [inRoom, setInRoom] = useState<boolean>(false);
   const [joinId, setJoinId] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -24,6 +25,7 @@ function App() {
   }, []);
 
   const createRoom = () => {
+    if (!userName.trim()) return;
     const id = uuidv4().slice(0, 8);
     window.history.pushState({}, '', `?room=${id}`);
     setRoomId(id);
@@ -32,7 +34,7 @@ function App() {
 
   const joinRoom = (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinId.trim()) {
+    if (joinId.trim() && userName.trim()) {
        window.history.pushState({}, '', `?room=${joinId.trim()}`);
        setRoomId(joinId.trim());
        setInRoom(true);
@@ -46,7 +48,7 @@ function App() {
   };
 
   if (inRoom) {
-    return <RoomView roomId={roomId} onLeave={() => {
+    return <RoomView roomId={roomId} userName={userName || 'Guest'} onLeave={() => {
       window.history.pushState({}, '', '/');
       setInRoom(false);
       setRoomId('');
@@ -65,9 +67,17 @@ function App() {
         </div>
 
         <div className="space-y-4 pt-6">
+          <input 
+            type="text" 
+            placeholder="Your Name" 
+            value={userName}
+            onChange={e => setUserName(e.target.value)}
+            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500/50 transition-all font-mono text-xs"
+          />
           <button 
             onClick={createRoom}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-slate-900 transition-colors font-bold py-3.5 rounded-lg flex justify-center items-center gap-2 uppercase tracking-wide text-[11px]"
+            disabled={!userName.trim()}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 text-slate-900 transition-colors font-bold py-3.5 rounded-lg flex justify-center items-center gap-2 uppercase tracking-wide text-[11px]"
           >
             <Camera className="w-4 h-4" />
             New Meeting
@@ -89,7 +99,7 @@ function App() {
             />
             <button 
               type="submit"
-              disabled={!joinId.trim()}
+              disabled={!joinId.trim() || !userName.trim()}
               className="bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:hover:bg-slate-700 text-slate-100 font-bold px-6 py-3 rounded-lg transition-colors text-xs uppercase tracking-wide"
             >
               Join
@@ -101,7 +111,7 @@ function App() {
   );
 }
 
-function RoomView({ roomId, onLeave, copyLink, copied }: { roomId: string, onLeave: () => void, copyLink: () => void, copied: boolean }) {
+function RoomView({ roomId, userName, onLeave, copyLink, copied }: { roomId: string, userName: string, onLeave: () => void, copyLink: () => void, copied: boolean }) {
   const {
     displayStream,
     peers,
@@ -113,8 +123,9 @@ function RoomView({ roomId, onLeave, copyLink, copied }: { roomId: string, onLea
     toggleVideo,
     toggleScreenShare,
     updateNotes,
-    recordMeeting
-  } = useWebRTC(roomId);
+    recordMeeting,
+    peersMeta
+  } = useWebRTC(roomId, userName);
 
   const [showNotes, setShowNotes] = useState(false);
 
@@ -163,14 +174,14 @@ function RoomView({ roomId, onLeave, copyLink, copied }: { roomId: string, onLea
            <VideoPlayer 
              stream={displayStream} 
              muted={true} 
-             name={isScreenSharing ? "You (Presentation)" : "You (Host)"}
+             name={isScreenSharing ? "You (Presentation)" : "You"}
              className={peers.length === 0 ? "max-w-4xl mx-auto w-full aspect-video border-2 border-emerald-500 shadow-lg shadow-emerald-500/10" : "aspect-video border-2 border-emerald-500 shadow-lg shadow-emerald-500/10"}
            />
            {peers.map(peer => (
               <VideoPlayer 
                 key={peer.id} 
                 stream={peer.stream} 
-                name={`Guest`}
+                name={peersMeta[peer.id]?.name || `Guest`}
                 className="aspect-video"
               />
            ))}

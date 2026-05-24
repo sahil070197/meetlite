@@ -7,6 +7,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 
 export interface Peer {
   id: string;
+  name?: string;
   stream: MediaStream;
 }
 
@@ -17,7 +18,7 @@ const configuration = {
   ],
 };
 
-export const useWebRTC = (roomId: string) => {
+export const useWebRTC = (roomId: string, name: string) => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Peer[]>([]);
@@ -33,6 +34,8 @@ export const useWebRTC = (roomId: string) => {
   const myUserIdRef = useRef<string | null>(null);
   const myJoinedAtRef = useRef<number>(Date.now());
 
+  const [peersTempMeta, setPeersTempMeta] = useState<{ [id: string]: { name: string } }>({});
+  
   const addPeerStream = useCallback((id: string, stream: MediaStream) => {
     setPeers((prev) => {
       if (prev.find((p) => p.id === id)) return prev;
@@ -111,7 +114,7 @@ export const useWebRTC = (roomId: string) => {
 
         // Add self to participants
         const participantRef = doc(db, 'rooms', roomId, 'participants', userUid);
-        await setDoc(participantRef, { joinedAt: myJoinedAtRef.current });
+        await setDoc(participantRef, { joinedAt: myJoinedAtRef.current, name });
 
         const sendSignal = async (targetId: string, type: string, payload: any) => {
           const signalId = Date.now().toString() + Math.random().toString(36).substring(7);
@@ -130,11 +133,23 @@ export const useWebRTC = (roomId: string) => {
             const participantId = change.doc.id;
             if (participantId === userUid) return;
 
-            if (change.type === 'added') {
+            if (change.type === 'added' || change.type === 'modified') {
               const pData = change.doc.data();
+              setPeersTempMeta((prev) => ({ ...prev, [participantId]: { name: pData.name || "Guest" } }));
               // I am the initiator if I was here before them, or break tie using id comparison
               const amIInitiator = pData.joinedAt > myJoinedAtRef.current || 
                 (pData.joinedAt === myJoinedAtRef.current && userUid > participantId);
+
+              if (change.type === 'modified') {
+                if (peerConnections.current[participantId]) {
+                  peerConnections.current[participantId].close();
+                  delete peerConnections.current[participantId];
+                }
+                removePeerStream(participantId);
+                if (candidateQueue.current[participantId]) {
+                  candidateQueue.current[participantId] = [];
+                }
+              }
 
               if (amIInitiator) {
                 const pc = new RTCPeerConnection(configuration);
@@ -400,6 +415,7 @@ export const useWebRTC = (roomId: string) => {
     toggleVideo,
     toggleScreenShare,
     updateNotes,
-    recordMeeting
+    recordMeeting,
+    peersMeta: peersTempMeta
   };
 };
