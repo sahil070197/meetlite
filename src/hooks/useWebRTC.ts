@@ -28,6 +28,7 @@ export const useWebRTC = (roomId: string) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   const peerConnections = useRef<{ [id: string]: RTCPeerConnection }>({});
+  const candidateQueue = useRef<{ [id: string]: any[] }>({});
   const localStreamRef = useRef<MediaStream | null>(null);
   const myUserIdRef = useRef<string | null>(null);
   const myJoinedAtRef = useRef<number>(Date.now());
@@ -58,14 +59,14 @@ export const useWebRTC = (roomId: string) => {
       try {
         try {
           initialStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+            video: true,
+            audio: true
           });
         } catch (err) {
           console.warn("Failed to get both video and audio, trying audio only...", err);
           try {
             initialStream = await navigator.mediaDevices.getUserMedia({
-              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+              audio: true,
               video: false
             });
             setIsVideoMuted(true);
@@ -73,7 +74,7 @@ export const useWebRTC = (roomId: string) => {
             console.warn("Failed to get audio, trying video only...", err2);
             try {
               initialStream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } },
+                video: true,
                 audio: false
               });
               setIsAudioMuted(true);
@@ -151,7 +152,7 @@ export const useWebRTC = (roomId: string) => {
                   }
                 };
 
-                const offer = await pc.createOffer();
+                const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
                 await pc.setLocalDescription(offer);
                 sendSignal(participantId, 'offer', pc.localDescription);
               }
@@ -182,6 +183,7 @@ export const useWebRTC = (roomId: string) => {
               if (signal.type === 'offer') {
                 pc = new RTCPeerConnection(configuration);
                 peerConnections.current[senderId] = pc;
+                if (!candidateQueue.current[senderId]) candidateQueue.current[senderId] = [];
 
                 localStreamRef.current?.getTracks().forEach(track => {
                   if (localStreamRef.current) pc.addTrack(track, localStreamRef.current);
@@ -196,14 +198,36 @@ export const useWebRTC = (roomId: string) => {
                 };
 
                 await pc.setRemoteDescription(new RTCSessionDescription(payload));
+                
+                // Process any candidates that arrived while setting remote description
+                if (candidateQueue.current[senderId]) {
+                  for (const c of candidateQueue.current[senderId]) {
+                    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.warn);
+                  }
+                  candidateQueue.current[senderId] = [];
+                }
+
                 const answer = await pc.createAnswer();
                 await pc.setLocalDescription(answer);
                 sendSignal(senderId, 'answer', pc.localDescription);
 
               } else if (signal.type === 'answer' && pc) {
                 await pc.setRemoteDescription(new RTCSessionDescription(payload));
-              } else if (signal.type === 'candidate' && pc) {
-                await pc.addIceCandidate(new RTCIceCandidate(payload));
+                
+                // Process any candidates that arrived while setting remote description
+                if (candidateQueue.current[senderId]) {
+                  for (const c of candidateQueue.current[senderId]) {
+                    await pc.addIceCandidate(new RTCIceCandidate(c)).catch(console.warn);
+                  }
+                  candidateQueue.current[senderId] = [];
+                }
+              } else if (signal.type === 'candidate') {
+                if (pc && pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(payload)).catch(console.warn);
+                } else {
+                  if (!candidateQueue.current[senderId]) candidateQueue.current[senderId] = [];
+                  candidateQueue.current[senderId].push(payload);
+                }
               }
             }
           });

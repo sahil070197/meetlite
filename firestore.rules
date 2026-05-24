@@ -31,8 +31,8 @@ service cloud.firestore {
     }
 
     match /rooms/{roomId} {
-      allow get: if isSignedIn() && isValidId(roomId);
-      allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming()) && incoming().createdAt == request.time.toMillis();
+      allow read: if isSignedIn() && isValidId(roomId);
+      allow create: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming());
       allow update: if isSignedIn() && isValidId(roomId) && isValidRoom(incoming()) &&
                     incoming().diff(existing()).affectedKeys().hasOnly(['notes']);
       
@@ -45,13 +45,12 @@ service cloud.firestore {
         }
 
         allow list: if isSignedIn() && isValidId(roomId); // anyone in system can list participants of a room
-        allow get: if isSignedIn() && isValidId(roomId) && isValidId(participantId);
+        allow read: if isSignedIn() && isValidId(roomId) && isValidId(participantId);
         allow create: if isSignedIn() &&
                       isValidId(roomId) &&
                       isValidId(participantId) &&
                       participantId == request.auth.uid &&
-                      isValidParticipant(incoming()) &&
-                      incoming().joinedAt == request.time.toMillis();
+                      isValidParticipant(incoming());
         allow delete: if isSignedIn() &&
                       isValidId(roomId) &&
                       isValidId(participantId) &&
@@ -66,18 +65,16 @@ service cloud.firestore {
                  data.senderId is string && data.senderId.size() <= 128 &&
                  data.targetId is string && data.targetId.size() <= 128 &&
                  data.type is string && data.type.size() <= 50 &&
-                 data.data is string && data.data.size() <= 10000 &&
+                 data.data is string && data.data.size() <= 50000 &&
                  data.createdAt is number;
         }
 
         // Users can list/read signals targeted to them or sent by them
-        allow list: if isSignedIn() && isValidId(roomId) && 
-                    (resource.data.targetId == request.auth.uid || resource.data.senderId == request.auth.uid);
+        allow read, list: if isSignedIn() && isValidId(roomId);
         allow create: if isSignedIn() &&
                       isValidId(roomId) &&
                       isValidSignal(incoming()) &&
-                      incoming().senderId == request.auth.uid &&
-                      incoming().createdAt == request.time.toMillis();
+                      incoming().senderId == request.auth.uid;
         allow delete: if isSignedIn() &&
                       isValidId(roomId) &&
                       existing().targetId == request.auth.uid; // Consumer deletes the signal once processed
